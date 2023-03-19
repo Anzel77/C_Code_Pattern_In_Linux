@@ -1,13 +1,18 @@
-//
-// Created by Karl on 2022/6/9.
-//
+/**
+ * @file algorithm.h
+ * @author Karl Meng (karlmfloating@gmail.com)
+ * @brief 
+ * @version 0.1
+ * @date 2023-03-17
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
 
 #ifndef ALGORITHM_H
 #define ALGORITHM_H
 
-#include <string.h>
 #include <stdbool.h>
-#include <stdlib.h>
 
 struct ListNode {
     int val;

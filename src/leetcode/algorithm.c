@@ -1,6 +1,17 @@
-//
-// Created by Karl on 2022/6/9.
-//
+/**
+ * @file algorithm.c
+ * @author Karl Meng (karlmfloating@gmail.com)
+ * @brief 
+ * @version 0.1
+ * @date 2023-03-17
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
+
+#include <string.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
 #include "algorithm.h"
 

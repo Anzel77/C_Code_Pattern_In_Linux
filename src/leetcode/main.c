@@ -1,4 +1,18 @@
+/**
+ * @file main.c
+ * @author Karl Meng (karlmfloating@gmail.com)
+ * @brief 
+ * @version 0.1
+ * @date 2023-03-17
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
+
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <math.h>
 
 #include "algorithm.h"
 

@@ -2,6 +2,10 @@ CC := gcc
 
 CFLAGS := -Wall -g
 # CFLAGS += -Werror
+# CFLAGS += -I$(INC_DIR)
+
+# LDLIBS=-lm
+# LDFLAGS=-L/usr/local/include
 
 SRCS := $(wildcard *.c)
 
@@ -16,7 +20,7 @@ $(EXECUTABLE): $(OBJS)
 	@$(CC) $(CFLAGS) -o $@ $^
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
 	rm -f $(OBJS) $(EXECUTABLE)
