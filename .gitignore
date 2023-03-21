@@ -1,4 +1,6 @@
 src/leetcode/leet_test
+src/socket_demo/socket_demo
+src/time_sync/time_sync
 
 # Prerequisites
 *.d
