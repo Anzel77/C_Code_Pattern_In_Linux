@@ -103,49 +103,107 @@ int create_server_socket(struct sockaddr_in *address) {
 
 void *server_thread(void *arg) {
     int server_socket, client_socket;
-    int address_length;
-    char buffer[MAX_BUF_SIZE] = {0};
+    socklen_t address_length;
     struct sockaddr_in server_address;
 
-    server_socket = create_server_socket(&server_address);
+    int cover_state;
+    const int cover_state_on = COVER_ON;
+    const int cover_state_off = COVER_OFF;
+
+    // uint8_t recv_buffer[MAX_BUF_SIZE];
+    // memset(recv_buffer, 0, MAX_BUF_SIZE);
+    uint8_t send_buffer_c[MAX_BUF_SIZE];
+    memset(send_buffer_c, 0, MAX_BUF_SIZE);
+
+    int resend_state = 0;
+
+    do {
+        server_socket = create_server_socket(&server_address);
+    } while (server_socket < 0);
+    LOGI("Waiting for connections...\n");
+
+    address_length = sizeof(server_address);
 
     while (1) {
-        printf("Waiting for connections...\n");
-        address_length = sizeof(server_address);
-
         // Accept connection from client
-        if ((client_socket = accept(server_socket, (struct sockaddr *)&server_address, (socklen_t *)&address_length)) < 0) {
-            printf("Failed to accept connection\n");
-            close(server_socket);
-            exit(1);
+        if ((client_socket = accept(server_socket, (struct sockaddr *)&server_address, &address_length)) < 0) {
+            LOGE("Failed to accept connection\n");
+            continue;
+        }
+        LOGD("Client connected: %s:%d\n", inet_ntoa(server_address.sin_addr), ntohs(server_address.sin_port));
+
+        while (1) {
+            uint8_t recv_buffer[MAX_BUF_SIZE];
+            memset(recv_buffer, 0, MAX_BUF_SIZE);
+            uint8_t send_buffer[MAX_BUF_SIZE];
+            memset(send_buffer, 0, MAX_BUF_SIZE);
+            ControlPacket recv_packet;
+            memset(&recv_packet, 0, sizeof(recv_packet));
+            ControlPacket send_packet;
+            memset(&send_packet, 0, sizeof(send_packet));
+
+            if (recv(client_socket, recv_buffer, MAX_BUF_SIZE, 0) <= 0) {
+                LOGE("Client disconnected\n");
+                break;
+            }
+            LOGD("recv_buffer: \n");
+            for (int i = 0; i < sizeof(ControlPacket); i++) {
+                LOGD("%#x\n", recv_buffer[i]);
+            }
+
+            // 将数组中的内容保存近本地结构体
+            deserialize_control_packet(recv_buffer, &recv_packet);
+
+            LOGD("length = %d\n", recv_packet.header.length);
+
+            uint16_t checksum = calculate_checksum(recv_buffer, sizeof(ControlPacket) - 2);
+            if (checksum != recv_packet.checksum) {
+                LOGE("the received packet is wrong! Please resend.\n");
+                sprintf(send_buffer, "RESEND");
+
+                if (send(client_socket, send_buffer, strlen(send_buffer), 0) < 0) {
+                    LOGE("Client disconnected\n");
+                    break;
+                }
+
+                break;
+            } else {
+                if (recv_packet.header.type == PACK_TYPE_CTRL) {
+                    if (recv_packet.command == CONTROL_ADD_COVER) {
+                        set_cover_switch(&cover_state_on);
+                        sprintf(send_buffer, "COVER ON");
+                    } else if (recv_packet.command == CONTROL_RMV_COVER) {
+                        set_cover_switch(&cover_state_off);
+                        sprintf(send_buffer, "COVER OFF");
+                    } else if (recv_packet.command == CONTROL_GET_COVER_STATE) {
+                        get_cover_state(&cover_state);
+                        send_packet.header.type = PACK_TYPE_INFO;
+                        send_packet.header.length = sizeof(ControlPacket) - sizeof(PacketHeader);
+                        if (cover_state == COVER_ON) {
+                            send_packet.command = MESSAGE_COVER_ON;
+                        } else if (cover_state == COVER_OFF) {
+                            send_packet.command = MESSAGE_COVER_OFF;
+                        }
+                        send_packet.checksum = calculate_checksum((uint8_t*)&send_packet, sizeof(send_packet) - 2);
+                        serialize_control_packet(send_buffer, &send_packet);
+                    }
+                }
+            }
+            
+            if (send(client_socket, send_buffer, strlen(send_buffer), 0) < 0) {
+                LOGE("Client disconnected\n");
+                break;
+            }
+            // sleep(MAX_PENDING);
         }
 
-        printf("Client connected: %s:%d\n", inet_ntoa(server_address.sin_addr), ntohs(server_address.sin_port));
-
-        if (recv(client_socket, buffer, MAX_BUF_SIZE, 0) < 0) {
-            printf("Client disconnected\n");
-            close(server_socket);
-            exit(1);
-        }
-
-        printf("Received response: %s\n", buffer);
-        memset(buffer, 0, MAX_BUF_SIZE);
-
-        // other operation
-
-        if (send(client_socket, "Hey Bro! What's up?", 20, 0) < 0) {
-            printf("Client disconnected\n");
-            close(server_socket);
-            exit(1);
-        }
-
-        sleep(MAX_PENDING);
+        close(client_socket);
     }
 
-    printf("Client reconnected: %s:%d\n", inet_ntoa(server_address.sin_addr), ntohs(server_address.sin_port));
+    close(server_socket);
+    LOGD("close server socket\n");
 
     pthread_exit(NULL);
-
 }
 
 int create_client_socket(const char *server_ip_addr) {
@@ -258,8 +316,6 @@ void *client_thread(void *arg) {
             retry++;
             continue;
         }
-
-        
 
         memset(&recv_packet, 0, sizeof(recv_packet));
         memset(recv_buffer, 0, MAX_BUF_SIZE);
