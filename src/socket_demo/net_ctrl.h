@@ -65,7 +65,7 @@ typedef struct ControlPacket {
 
 typedef struct HeartbeatPacket {
     PacketHeader header;
-    uint32_t timestamp;
+    // uint32_t timestamp;
     uint8_t cover_state;
     uint8_t checksum;
 } HeartbeatPacket;

@@ -284,7 +284,7 @@ void *client_thread(void *arg) {
     const char *server_ip_addr = (const char *)arg;
 
     int retry = 0;
-    const int MAX_RETRIES = 5;
+    // const int MAX_RETRIES = 5;
     int counter = 0;
 
     uint8_t send_buffer[MAX_BUF_SIZE] = {0};
@@ -309,7 +309,7 @@ void *client_thread(void *arg) {
 
         while (1) {
             timestamp++;
-            if (timestamp % 10 == 0) {
+            if (timestamp % 2 == 0) {
                 cover_state = (cover_state == COVER_OFF) ? COVER_ON : COVER_OFF;
             }
             // if (cover_state == COVER_NULL) {
@@ -332,36 +332,49 @@ void *client_thread(void *arg) {
             // serialize_control_packet(send_buffer, &control_packet);
 
             uint32_t offset = 0;
-            uint16_t len = 10;
+            uint16_t len = 6;
             PutByteStream(send_buffer, PACK_TYPE_HERT, 2, &offset);
             PutByteStream(send_buffer, len, 2, &offset);
-            PutByteStream(send_buffer, timestamp, 4, &offset);
+            // PutByteStream(send_buffer, timestamp, 4, &offset);
             PutByteStream(send_buffer, cover_state, 1, &offset);
             // uint8_t checksum = calculate_checksum(send_buffer, len - 1);
             uint8_t checksum = CalculateCRC8(send_buffer, len - 1);
             PutByteStream(send_buffer, checksum, 1, &offset);
 
-            // sended data
-            printf("send_buffer:\n");
-            for (int i = 0; i < len; i++) {
-                printf("%02x ", send_buffer[i]);
-                if (i % 16 == 15) printf("\n");
-            }
-            printf("\n---\n");
-
-            printf("send_checksum = %d\n", checksum);
-
-            if (send(client_socket, send_buffer, len, 0) <= 0) {
-                printf("Error: Failed to send message.\n");
-                break;
-            }
-
-            if (recv(client_socket, recv_buffer, sizeof(recv_buffer), 0) < 0) {
+            int recv_buffer_len = recv(client_socket, recv_buffer, sizeof(recv_buffer), 0);
+            if (recv_buffer_len < 0) {
                 printf("Error: Failed to receive massage.\n");
                 break;
+            } else {
+                if (ExtractFromBigEndian(recv_buffer, 2) == 0x0102) {
+                    // receive data
+                    printf("recv_buffer:\n");
+                    for (int i = 0; i < recv_buffer_len; i++) {
+                        printf("%02x ", recv_buffer[i]);
+                        if (i % 16 == 15) printf("\n");
+                    }
+                    printf("\n---\n");
+
+                    // sended data
+                    printf("send_buffer:\n");
+                    for (int i = 0; i < len; i++) {
+                        printf("%02x ", send_buffer[i]);
+                        if (i % 16 == 15) printf("\n");
+                    }
+                    printf("\n---\n");
+
+                    // printf("send_checksum = %d\n", checksum);
+
+                    if (send(client_socket, send_buffer, len, 0) <= 0) {
+                        printf("Error: Failed to send message.\n");
+                        break;
+                    }
+                }
+
+
             }
 
-            printf("recv_buffer: %s\n", recv_buffer);
+            // printf("recv_buffer: %s\n", recv_buffer);
 
             // if (strncmp(recv_buffer, "COVER ON", 8) == 0) {
             //     cover_state = COVER_ON;
@@ -382,14 +395,14 @@ void *client_thread(void *arg) {
                 // memset(&control_packet, 0, sizeof(control_packet));
                 memset(send_buffer, 0, MAX_BUF_SIZE);
             }
-
-            sleep(MAX_PENDING);
+            // sleep(MAX_PENDING);
         }
 
         close(client_socket);
         sleep(10);
-
+        
     }
+    
     pthread_exit(NULL);
 }
 
