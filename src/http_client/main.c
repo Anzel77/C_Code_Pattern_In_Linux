@@ -66,6 +66,7 @@ int main(int argc, char const* argv[]) {
         //         "Connection: close\r\n"
         //         "\r\n",
         //         argv[1]);
+
         if (cnt % 3 == 0) {
             sprintf(request, request_home);
         } else if (cnt % 3 == 1) {
@@ -74,25 +75,30 @@ int main(int argc, char const* argv[]) {
             sprintf(request, request_cover_off);
         }
 
+        // sprintf(request, request_home);
+
         // 发送请求
         if (send(client_socket, request, strlen(request), 0) < 0) {
             perror("Failed to send request");
             exit(EXIT_FAILURE);
         }
 
+        cnt++;
+        printf("count: %d\n", cnt);
+
         // 接收响应并输出
         char response_buffer[BUFFER_SIZE];
         int  received_bytes;
         while ((received_bytes = recv(client_socket, response_buffer, BUFFER_SIZE - 1, 0)) > 0) {
             response_buffer[received_bytes] = '\0';
-            printf("%s\n\n", response_buffer);
+            printf("%s\n", response_buffer);
+            printf("====================================\n\n");
         }
 
         // 关闭套接字
         close(client_socket);
-        cnt++;
 
-        sleep(10);
+        sleep(1);
     }
 
     return 0;
