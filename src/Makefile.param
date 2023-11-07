@@ -1,6 +1,6 @@
 CC := gcc
 
-CFLAGS += -Wall -g
+CFLAGS += -Wall -g -lpthread
 # CFLAGS += -Werror
 # CFLAGS += -I$(INC_DIR)
 
@@ -24,3 +24,6 @@ $(EXECUTABLE): $(OBJS)
 
 clean:
 	rm -f $(OBJS) $(EXECUTABLE)
+
+echo:
+	@echo $(OBJS)
