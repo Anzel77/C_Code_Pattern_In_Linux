@@ -843,35 +843,31 @@ int accept_request(int client) {
 
         send_header(client, "image/jpeg", jpg_size);
 
-        // long len = 0;
+        char   jpg_buf[1024 * 600] = {0};
+        size_t len                 = 0;
 
-        // while (len < jpg_size) {
-        //     int ret = sendfile(client, jpg, &len, jpg_size - len);
-        //     if (-1 == ret) {
-        //         printf("send error\n");
-        //         return -1;
-        //     }
-        // }
-        int total_len = 0;
-        while (1) {
-            char   buf[1024] = {0};
-            size_t len = 0;
+        len = fread(jpg_buf, 1, jpg_size, jpg);
+        if (len != jpg_size) {
+            printf("read jpg error\n");
+            fclose(jpg);
+            return -1;
+        }
 
-            len = fread(buf, 1, sizeof(buf), jpg);
-            if (len > 0) {
-                if (send(client, buf, len, 0) < 0) {
-                    printf("send jpg error\n");
-                    break;
-                }
-                // usleep(20); //减轻接收端压力
-                memset(buf, 0, len);
-                total_len += len;
-                printf("total_len = %d\n", total_len);
-            } else if (0 == len) {
-                break;
-            } else {
-                perror("read");
+        size_t total_len = 0;
+        while (total_len < jpg_size) {
+            char   buf[4096] = {0};
+            size_t len       = (total_len + sizeof(buf) <= jpg_size) ? sizeof(buf) : (jpg_size - total_len);
+            memcpy(buf, jpg_buf + total_len, len);
+
+            ssize_t send_len = send(client, buf, len, 0);
+            if (send_len < 0) {
+                printf("send jpg error\n");
+                return -1;
             }
+            usleep(20);
+            total_len += send_len;
+
+            printf("total_len: %ld, send_len: %ld\n", total_len, send_len);
         }
 
     } else if ((strcmp(path, "/") == 0) || (strcasecmp(path, "/home") == 0)) {
