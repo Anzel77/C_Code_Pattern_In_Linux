@@ -2,6 +2,8 @@
 
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -474,10 +476,10 @@ void send_header(int client, const char* content_type, int content_length) {
             "\r\n",
             content_type, content_length);
 
-    int len = send(client, header, strlen(header), 0);
+    send(client, header, strlen(header), 0);
 
-    printf("\nheader:\n%s\n", header);
-    printf("len = %d, header_len = %ld\n", len, strlen(header));
+    // printf("\nheader:\n%s\n", header);
+    // printf("len = %d, header_len = %ld\n", len, strlen(header));
 }
 
 // 函数用于读取HTML文件的内容
@@ -716,12 +718,10 @@ int accept_request(int client) {
     char query_string[1024] = {0};
 
     // 获取一行HTTP请求报文
-    // header_len = get_request_line(client, buf, sizeof(buf));
-    // printf("request_line: %s\n", buf);
+    header_size = get_request_line(client, buf, sizeof(buf));
+    // handle_request(client, buf, sizeof(buf), &header_size);
 
-    handle_request(client, buf, sizeof(buf), &header_size);
-
-    printf("Received Request Header:\n%s\n", buf);
+    printf("request_line: %s", buf);
 
     parse_request_line(buf, header_size, method, url, version);
 
@@ -786,48 +786,6 @@ int accept_request(int client) {
         // }
 
     } else if (strcasecmp(path, "/jpeg") == 0) {
-        // int content_length = 0;
-
-        // char jpg[1024 * 600] = {0};
-        // int  jpg_len         = 0;
-
-        // char http_response[1024 * 600] = {0};
-        // int  http_response_len         = 0;
-
-        // int http_header_len = 0;
-
-        // char* http_body     = NULL;
-        // int   http_body_len = 0;
-
-        /* if (LOTO_COMM_VENC_GetSnapJpg(jpg, &jpg_len) == 0) {
-            // sprintf(content, "get snap successfully\r\n");
-
-            sprintf(http_response, JPG_RESPONSE_TEMPLATE, jpg_len);
-
-            // printf("jpg_len: %d\n", jpg_len);
-            // printf("http header:\n%s\n", http_response);
-
-            http_header_len   = strlen(http_response);
-            http_body         = http_response + http_header_len;
-            http_body_len     = jpg_len;
-            http_response_len = http_header_len + http_body_len;
-
-            memccpy(http_body, jpg, 1, jpg_len);
-
-            if (send(client, http_response, http_response_len, 0) < 0) {
-                return -1;
-            }
-
-        } else {
-            printf("failed to get snap\r\n");
-            sprintf(http_response, "failed to get snap\r\n");
-
-            if (send_plain_response(client, http_response) != 0) {
-                printf("send error\n");
-                return -1;
-            }
-        } */
-
         FILE* jpg = fopen("1.jpg", "rb");
         if (jpg == NULL) {
             printf("open file err\n");
@@ -855,27 +813,34 @@ int accept_request(int client) {
 
         size_t total_len = 0;
         while (total_len < jpg_size) {
-            char   buf[4096] = {0};
-            size_t len       = (total_len + sizeof(buf) <= jpg_size) ? sizeof(buf) : (jpg_size - total_len);
+            char   buf[1024] = {0};
+            size_t len       = 0;
+            
+            len = (total_len + sizeof(buf) <= jpg_size) ? sizeof(buf) : (jpg_size - total_len);
             memcpy(buf, jpg_buf + total_len, len);
 
             ssize_t send_len = send(client, buf, len, 0);
             if (send_len < 0) {
                 printf("send jpg error\n");
-                return -1;
+                break;
+            } else if (send_len == 0) {
+                printf("send jpg error\n");
+                break;
             }
-            usleep(20);
+            // usleep(20);
             total_len += send_len;
 
-            printf("total_len: %ld, send_len: %ld\n", total_len, send_len);
+            // printf("total_len: %ld, send_len: %ld\n", total_len, send_len);
         }
+
+        printf("total_len: %ld\n\n", total_len);
 
     } else if ((strcmp(path, "/") == 0) || (strcasecmp(path, "/home") == 0)) {
         char tmp[] = "Hello World!";
 
         send_header(client, "text/plain", strlen(tmp));
 
-        if (send(client, tmp, strlen(tmp), 0) < 0) {
+        if (send(client, tmp, strlen(tmp), 0) <= 0) {
             printf("send error\n");
         }
     } else {
@@ -891,28 +856,38 @@ int accept_request(int client) {
 
 // socket initial: socket() ---> bind() ---> listen()
 int startup(uint16_t* port) {
+    int ret   = 0;
     int httpd = 0;
+    int opt   = 0;
 
     httpd = socket(AF_INET, SOCK_STREAM, 0);
     if (httpd == -1)
         error_die("socket");
 
-    int opt = -1;
+    opt = -1;
 
-    int ret = setsockopt(httpd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    ret = setsockopt(httpd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     if (-1 == ret) {
         perror("setsockopt");
-        return -1;
+        // return -1;
     }
 
-    struct sockaddr_in name;
+    opt = 1024 * 5;
 
-    memset(&name, 0, sizeof(name));
-    name.sin_family      = AF_INET;
-    name.sin_port        = htons(*port);
-    name.sin_addr.s_addr = INADDR_ANY;
+    ret = setsockopt(httpd, SOL_SOCKET, SO_SNDBUF, &opt, sizeof(opt));
+    if (-1 == ret) {
+        perror("setsockopt");
+        // return -1;
+    }
 
-    if (bind(httpd, (struct sockaddr*)&name, sizeof(name)) < 0) {
+    struct sockaddr_in server_addr;
+
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family      = AF_INET;
+    server_addr.sin_port        = htons(*port);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(httpd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         close(httpd);
         error_die("bind");
     }
@@ -920,10 +895,10 @@ int startup(uint16_t* port) {
     if (*port == 0) /* Check if the incoming port number is 0.
                        If it is 0, the port needs to be dynamically allocated */
     {
-        socklen_t namelen = sizeof(name);
-        if (getsockname(httpd, (struct sockaddr*)&name, &namelen) == -1)
+        socklen_t namelen = sizeof(server_addr);
+        if (getsockname(httpd, (struct sockaddr*)&server_addr, &namelen) == -1)
             error_die("getsockname");
-        *port = ntohs(name.sin_port);
+        *port = ntohs(server_addr.sin_port);
     }
 
     if (listen(httpd, MAX_PENDING) < 0) {
@@ -932,6 +907,61 @@ int startup(uint16_t* port) {
     }
 
     return (httpd);
+}
+
+pthread_t accept_thread    = 0;
+int       accept_thread_id = 0;
+
+int socket_max  = 5;
+int sockets[5]  = {0};
+int socket_head = 0;
+int socket_tail = 0;
+
+void thread_accept_request(void *param) {
+    accept_thread_id++;
+    while (1) {   
+        int socket = sockets[socket_tail % socket_max];
+        sockets[socket_tail % socket_max] = 0;
+
+        printf("sockets[%d]: %d\n", socket_tail % socket_max, socket);
+
+        if (socket != 0) {
+            accept_request(socket);
+            usleep(1000 * 200);
+            close(socket);
+            socket_tail++;
+        } else {
+            usleep(1000 * 200);
+        }
+
+        printf("socket_tail: %d\n", socket_tail);
+    }
+
+    accept_thread_id--;
+}
+
+void try_accept_request(int socket) {
+    if (accept_thread == 0) {
+        printf("create thread_accept_request\n");
+        if (pthread_create(&accept_thread, NULL, (void *)thread_accept_request, NULL) != 0) {
+            perror("accept_request");
+        }
+    }
+
+    if (socket_tail == socket_head) {
+        socket_head = socket_tail = 0;
+        printf("sock buf reset\n");
+    }
+
+    if ((socket_tail + socket_max - 1) == socket_head) {
+        close(socket);
+        printf("socket buffer max\n");
+    } else {
+        sockets[socket_head % socket_max] = socket;
+        socket_head++;
+    }
+
+    printf("socket_head: %d\n", socket_head);
 }
 
 void* http_server(void* arg) {
@@ -946,6 +976,29 @@ void* http_server(void* arg) {
     server_sock = startup(&port); // 服务器端监听套接字设置
     printf("http running on port %d\n", port);
 
+    /* // while (1) {
+    //     client_sock = accept(server_sock, (struct sockaddr *)&client_name, &client_name_len);
+    //     if (client_sock == -1) {
+    //         if (errno == EWOULDBLOCK || errno == EAGAIN) {
+    //             // 没有等待中的连接请求，继续循环
+    //             usleep(1000 * 10);
+    //             continue;
+    //         } else {
+    //             perror("accept");
+    //             exit(EXIT_FAILURE);
+    //         }
+    //     }
+
+    //     pthread_t request_id;
+    //     if (pthread_create(&request_id, NULL, accept_request, (void*)&client_sock) != 0)
+    //         error_die("accept_request");
+    //     usleep(10);
+
+    //     // accept_request(client_sock);
+    //     // close(client_sock);
+    //     // printf("HTTP client disconnected.\n");
+    // } */
+
     while (1) {
         client_sock = accept(server_sock, (struct sockaddr*)&client_name, &client_name_len);
         if (client_sock == -1) {
@@ -954,14 +1007,7 @@ void* http_server(void* arg) {
             // printf("HTTP client connected.\n");
         }
 
-        /* accept_request(client_sock); */
-        // if (pthread_create(&new_thread, NULL, accept_request, (void*)&client_sock) != 0)
-        //     perror("accept_request");
-        // usleep(10);
-
-        accept_request(client_sock);
-        close(client_sock);
-        // printf("HTTP client disconnected.\n");
+        try_accept_request(client_sock);
     }
 
     close(server_sock);

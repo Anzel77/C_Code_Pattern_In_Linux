@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -34,6 +35,29 @@ int main(int argc, char const* argv[]) {
     server_sock = startup(&port); // 服务器端监听套接字设置
     printf("http running on port %d\n", port);
 
+    // while (1) {
+    //     client_sock = accept(server_sock, (struct sockaddr *)&client_name, &client_name_len);
+    //     if (client_sock == -1) {
+    //         if (errno == EWOULDBLOCK || errno == EAGAIN) {
+    //             // 没有等待中的连接请求，继续循环
+    //             usleep(1000 * 10);
+    //             continue;
+    //         } else {
+    //             perror("accept");
+    //             exit(EXIT_FAILURE);
+    //         }
+    //     }
+
+    //     pthread_t request_id;
+    //     if (pthread_create(&request_id, NULL, accept_request, (void*)&client_sock) != 0)
+    //         error_die("accept_request");
+    //     usleep(10);
+
+    //     // accept_request(client_sock);
+    //     // close(client_sock);
+    //     // printf("HTTP client disconnected.\n");
+    // }
+
     while (1) {
         client_sock = accept(server_sock, (struct sockaddr*)&client_name, &client_name_len);
         if (client_sock == -1) {
@@ -41,16 +65,7 @@ int main(int argc, char const* argv[]) {
         } else {
             // printf("HTTP client connected.\n");
         }
-
-        /* accept_request(client_sock); */
-        // if (pthread_create(&new_thread, NULL, accept_request, (void*)&client_sock) != 0)
-        //     perror("accept_request");
-        // usleep(10);
-
-        accept_request(client_sock);
-        sleep(2);
-        close(client_sock);
-        // printf("HTTP client disconnected.\n");
+        try_accept_request(client_sock);
     }
 
     close(server_sock);

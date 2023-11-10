@@ -21,6 +21,10 @@ void* http_server(void* arg);
 void error_die(const char* sc);
 int startup(uint16_t* port);
 int accept_request(int client);
+// void* accept_request(void* pclient);
+
+void thread_accept_request(void *param);
+void try_accept_request(int socket);
 
 #ifdef __cplusplus
 }
