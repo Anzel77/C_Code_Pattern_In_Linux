@@ -49,7 +49,7 @@ typedef struct KeyValuePair {
     char* value;
 } KeyValuePair;
 
-// static int gs_reboot_switch = 0;
+// static int s_reboot_switch = 0;
 
 /**
  * @brief 打印出错误信息并结束程序
@@ -421,7 +421,7 @@ int deal_query_string(char* query_string, char* content) {
                 //         strcat(content, temp);
                 //         temp[0] = '\0';
 
-                //         gs_reboot_switch = 1;
+                //         s_reboot_switch = 1;
 
                 //     } else {
                 //         printf("remain the setting of server_url\n");
@@ -439,7 +439,7 @@ int deal_query_string(char* query_string, char* content) {
                 //         strcat(content, temp);
                 //         temp[0] = '\0';
 
-                //         gs_reboot_switch = 1;
+                //         s_reboot_switch = 1;
 
                 //     } else {
                 //         printf("remain the setting of server_url\n");
@@ -695,7 +695,7 @@ void handle_request(int client_socket, char* buf, int buf_size, int* header_size
     }
 
     // Print the request header
-    // printf("Received Request Header:\n%s\n", request_header);
+    printf("Received Request Header:\n%s\n", request_header);
 
     memset(buf, 0, buf_size);
     memcpy(buf, request_header, bytes_received);
@@ -718,12 +718,14 @@ int accept_request(int client) {
     char query_string[1024] = {0};
 
     // 获取一行HTTP请求报文
-    header_size = get_request_line(client, buf, sizeof(buf));
-    // handle_request(client, buf, sizeof(buf), &header_size);
+    // header_size = get_request_line(client, buf, sizeof(buf));
+    handle_request(client, buf, sizeof(buf), &header_size);
 
-    printf("request_line: %s", buf);
+    // printf("request_line: %s", buf);
 
     parse_request_line(buf, header_size, method, url, version);
+
+    printf("method: %s\n", method);
 
 
     // 暂时只支持get方法
@@ -764,24 +766,24 @@ int accept_request(int client) {
         //     return -1;
         // }
 
-        // if (gs_reboot_switch) {
+        // if (s_reboot_switch) {
         //     reboot_system();
-        //     gs_reboot_switch = 0;
+        //     s_reboot_switch = 0;
         // }
 
     } else if (strcasecmp(path, "/reboot") == 0) {
         // char content[1024] = {0};
         // sprintf(content, "Restarting\r\n");
 
-        // gs_reboot_switch = 1;
+        // s_reboot_switch = 1;
 
         // if (send_plain_response(client, content) != 0) {
         //     printf("send device_info error\n");
         //     return -1;
         // }
 
-        // if (gs_reboot_switch) {
-        //     gs_reboot_switch = 0;
+        // if (s_reboot_switch) {
+        //     s_reboot_switch = 0;
         //     reboot_system();
         // }
 
@@ -801,29 +803,29 @@ int accept_request(int client) {
 
         send_header(client, "image/jpeg", jpg_size);
 
-        char   jpg_buf[1024 * 600] = {0};
-        size_t len                 = 0;
+        // char   jpg_buf[1024 * 600] = {0};
+        char*  jpg_buf = (char*)malloc(1024 * 1024);
+        size_t len     = 0;
 
         len = fread(jpg_buf, 1, jpg_size, jpg);
         if (len != jpg_size) {
             printf("read jpg error\n");
+            free(jpg_buf);
             fclose(jpg);
             return -1;
         }
 
         size_t total_len = 0;
         while (total_len < jpg_size) {
-            char   buf[1024] = {0};
-            size_t len       = 0;
-            
+            // char   buf[1024] = {0};
+            char*  buf = (char*)malloc(1024);
+            size_t len = 0;
+
             len = (total_len + sizeof(buf) <= jpg_size) ? sizeof(buf) : (jpg_size - total_len);
             memcpy(buf, jpg_buf + total_len, len);
 
-            ssize_t send_len = send(client, buf, len, 0);
-            if (send_len < 0) {
-                printf("send jpg error\n");
-                break;
-            } else if (send_len == 0) {
+            ssize_t send_len = send(client, buf, len, MSG_NOSIGNAL);
+            if (send_len <= 0) {
                 printf("send jpg error\n");
                 break;
             }
@@ -831,18 +833,25 @@ int accept_request(int client) {
             total_len += send_len;
 
             // printf("total_len: %ld, send_len: %ld\n", total_len, send_len);
+            free(buf);
         }
+        free(jpg_buf);
 
         printf("total_len: %ld\n\n", total_len);
 
     } else if ((strcmp(path, "/") == 0) || (strcasecmp(path, "/home") == 0)) {
         char tmp[] = "Hello World!";
+        printf("%s\n", tmp);
 
         send_header(client, "text/plain", strlen(tmp));
 
-        if (send(client, tmp, strlen(tmp), 0) <= 0) {
+        printf("send_header over\n");
+
+        if (send(client, tmp, strlen(tmp), MSG_NOSIGNAL) <= 0) {
             printf("send error\n");
         }
+
+        printf("send over\n");
     } else {
         printf("not_found\n");
         not_found(client);
@@ -912,8 +921,8 @@ int startup(uint16_t* port) {
 pthread_t accept_thread    = 0;
 int       accept_thread_id = 0;
 
-int socket_max  = 5;
-int sockets[5]  = {0};
+int socket_max  = 10;
+int sockets[10] = {-1};
 int socket_head = 0;
 int socket_tail = 0;
 
@@ -926,12 +935,13 @@ void thread_accept_request(void *param) {
         printf("sockets[%d]: %d\n", socket_tail % socket_max, socket);
 
         if (socket != 0) {
+            socket_tail++;
             accept_request(socket);
             usleep(1000 * 200);
             close(socket);
-            socket_tail++;
         } else {
-            usleep(1000 * 200);
+            usleep(1000 * 500);
+            printf("wait\n");
         }
 
         printf("socket_tail: %d\n", socket_tail);
@@ -948,10 +958,10 @@ void try_accept_request(int socket) {
         }
     }
 
-    if (socket_tail == socket_head) {
-        socket_head = socket_tail = 0;
-        printf("sock buf reset\n");
-    }
+    // if (socket_tail == socket_head) {
+    //     socket_head = socket_tail = 0;
+    //     printf("sock buf reset\n");
+    // }
 
     if ((socket_tail + socket_max - 1) == socket_head) {
         close(socket);
